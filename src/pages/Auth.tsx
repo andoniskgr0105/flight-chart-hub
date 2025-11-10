@@ -14,23 +14,48 @@ const authSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   fullName: z.string().min(2, "Full name must be at least 2 characters").optional(),
+  code: z.string().length(4, "Code must be exactly 4 characters"),
+});
+
+const loginSchema = z.object({
+  emailOrCode: z.string().min(1, "Email or code is required"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 const Auth = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  const [loginData, setLoginData] = useState({ email: "", password: "" });
-  const [signupData, setSignupData] = useState({ email: "", password: "", fullName: "" });
+  const [loginData, setLoginData] = useState({ emailOrCode: "", password: "" });
+  const [signupData, setSignupData] = useState({ email: "", password: "", fullName: "", code: "" });
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      authSchema.omit({ fullName: true }).parse(loginData);
+      loginSchema.parse(loginData);
+      
+      let email = loginData.emailOrCode;
+      
+      // Check if input is a 4-letter code (case-insensitive)
+      if (loginData.emailOrCode.length === 4 && /^[A-Za-z]{4}$/.test(loginData.emailOrCode)) {
+        // Look up email by code
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("code", loginData.emailOrCode.toUpperCase())
+          .single();
+
+        if (profileError || !profileData) {
+          toast.error("Invalid code or code not found");
+          return;
+        }
+
+        email = profileData.email;
+      }
       
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: loginData.email,
+        email: email,
         password: loginData.password,
       });
 
@@ -59,6 +84,12 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
+      // Validate code is exactly 4 letters
+      if (signupData.code && (!/^[A-Za-z]{4}$/.test(signupData.code))) {
+        toast.error("Code must be exactly 4 letters");
+        return;
+      }
+
       authSchema.parse(signupData);
       
       const { data, error } = await supabase.auth.signUp({
@@ -68,6 +99,7 @@ const Auth = () => {
           emailRedirectTo: `${window.location.origin}/dashboard`,
           data: {
             full_name: signupData.fullName,
+            code: signupData.code.toUpperCase(),
           },
         },
       });
@@ -115,13 +147,13 @@ const Auth = () => {
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="login-email">Email</Label>
+                  <Label htmlFor="login-email-or-code">Email or 4-Letter Code</Label>
                   <Input
-                    id="login-email"
-                    type="email"
-                    placeholder="controller@aims.com"
-                    value={loginData.email}
-                    onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                    id="login-email-or-code"
+                    type="text"
+                    placeholder="controller@aims.com or ABCD"
+                    value={loginData.emailOrCode}
+                    onChange={(e) => setLoginData({ ...loginData, emailOrCode: e.target.value })}
                     required
                   />
                 </div>
@@ -163,6 +195,21 @@ const Auth = () => {
                     onChange={(e) => setSignupData({ ...signupData, email: e.target.value })}
                     required
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-code">4-Letter Code</Label>
+                  <Input
+                    id="signup-code"
+                    type="text"
+                    placeholder="ABCD"
+                    maxLength={4}
+                    value={signupData.code}
+                    onChange={(e) => setSignupData({ ...signupData, code: e.target.value.toUpperCase().replace(/[^A-Za-z]/g, '') })}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Choose a unique 4-letter code for quick login
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-password">Password</Label>
