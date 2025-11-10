@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, CalendarIcon, Pencil, Trash2, Clock } from "lucide-react";
+import { Plus, CalendarIcon, Pencil, Trash2, Clock, AlertTriangle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { format, differenceInDays, addDays } from "date-fns";
@@ -281,6 +281,105 @@ const GanttView = () => {
 
   const hourSeparators = generateHourSeparators();
 
+  // Detect conflicts and calculate vertical positions for flights
+  const calculateFlightPositions = (aircraftRoutes: FlightRoute[]) => {
+    const routesWithPositions = aircraftRoutes
+      .map((route) => {
+        const position = getFlightPosition(
+          route.departure_time,
+          route.arrival_time
+        );
+        return { route, position };
+      })
+      .filter(({ position }) => position.visible);
+
+    // Detect conflicts (overlapping flights)
+    const conflicts = new Map<string, Set<string>>();
+    
+    for (let i = 0; i < routesWithPositions.length; i++) {
+      const flight1 = routesWithPositions[i];
+      const departure1 = new Date(flight1.route.departure_time);
+      const arrival1 = new Date(flight1.route.arrival_time);
+      
+      for (let j = i + 1; j < routesWithPositions.length; j++) {
+        const flight2 = routesWithPositions[j];
+        const departure2 = new Date(flight2.route.departure_time);
+        const arrival2 = new Date(flight2.route.arrival_time);
+        
+        // Check if flights overlap
+        const overlap = !(arrival1 <= departure2 || arrival2 <= departure1);
+        
+        if (overlap) {
+          // Mark both flights as conflicting
+          if (!conflicts.has(flight1.route.id)) {
+            conflicts.set(flight1.route.id, new Set());
+          }
+          if (!conflicts.has(flight2.route.id)) {
+            conflicts.set(flight2.route.id, new Set());
+          }
+          conflicts.get(flight1.route.id)!.add(flight2.route.id);
+          conflicts.get(flight2.route.id)!.add(flight1.route.id);
+        }
+      }
+    }
+
+    // Calculate vertical stacking positions
+    const lanes: FlightRoute[][] = [];
+    const assignedLane = new Map<string, number>();
+
+    // Sort flights by departure time
+    const sortedFlights = [...routesWithPositions].sort((a, b) => {
+      const depA = new Date(a.route.departure_time).getTime();
+      const depB = new Date(b.route.departure_time).getTime();
+      return depA - depB;
+    });
+
+    // Assign flights to lanes (greedy algorithm)
+    sortedFlights.forEach(({ route }) => {
+      let laneIndex = 0;
+      
+      // Find the first lane where this flight doesn't conflict
+      while (laneIndex < lanes.length) {
+        const canFit = lanes[laneIndex].every((existingRoute) => {
+          const existingDep = new Date(existingRoute.departure_time);
+          const existingArr = new Date(existingRoute.arrival_time);
+          const thisDep = new Date(route.departure_time);
+          const thisArr = new Date(route.arrival_time);
+          
+          // Check if they overlap
+          return thisArr <= existingDep || thisDep >= existingArr;
+        });
+        
+        if (canFit) break;
+        laneIndex++;
+      }
+      
+      // Create new lane if needed
+      if (laneIndex >= lanes.length) {
+        lanes.push([]);
+      }
+      
+      lanes[laneIndex].push(route);
+      assignedLane.set(route.id, laneIndex);
+    });
+
+    const maxLanes = lanes.length;
+    // Has conflicts if there are overlapping flights (conflicts.size > 0)
+    const hasConflicts = conflicts.size > 0;
+
+    return {
+      routesWithPositions: routesWithPositions.map(({ route, position }) => ({
+        route,
+        position,
+        lane: assignedLane.get(route.id) || 0,
+        hasConflict: conflicts.has(route.id),
+        conflictingFlights: conflicts.get(route.id) || new Set()
+      })),
+      maxLanes,
+      hasConflicts
+    };
+  };
+
   return (
     <>
       <div className="flex justify-between items-center mb-4">
@@ -446,16 +545,28 @@ const GanttView = () => {
             {/* Gantt Rows - Scrollable */}
             {aircraft.map((ac) => {
               const aircraftRoutes = routes.filter((r) => r.aircraft_id === ac.id);
+              const { routesWithPositions, maxLanes, hasConflicts } = calculateFlightPositions(aircraftRoutes);
+              
+              // Calculate row height based on number of lanes (conflicts)
+              const baseHeight = 48; // 12 * 4 (h-12 = 3rem = 48px)
+              const flightHeight = 40; // Height per flight badge
+              const gapBetweenFlights = 8; // Gap between flights in different lanes
+              const laneHeight = flightHeight + gapBetweenFlights; // Total height per lane including gap
+              const rowHeight = hasConflicts ? baseHeight + (maxLanes - 1) * laneHeight : baseHeight;
               
               return (
-                <div key={ac.id} className="flex items-center border-b border-border/50 pb-4" style={{ width: `${numChunks * 100}%`, minWidth: '100%' }}>
-                  <div className="w-48 pr-4 flex-shrink-0 sticky left-0 bg-background z-10">
+                <div key={ac.id} className="flex items-start border-b border-border/50 pb-4" style={{ width: `${numChunks * 100}%`, minWidth: '100%' }}>
+                  <div className="w-48 pr-4 flex-shrink-0 sticky left-0 bg-background z-10 pt-1">
                     <div className="font-semibold text-sm">{ac.registration}</div>
                     <div className="text-xs text-muted-foreground">{ac.aircraft_type}</div>
                   </div>
                   <div 
-                    className="relative h-12 bg-muted/30 rounded"
-                    style={{ width: `calc(${numChunks * 100}% - 12rem)` }}
+                    className="relative bg-muted/30 rounded"
+                    style={{ 
+                      width: `calc(${numChunks * 100}% - 12rem)`,
+                      height: `${rowHeight}px`,
+                      minHeight: `${rowHeight}px`
+                    }}
                   >
                     {/* Vertical separators for hours */}
                     {hourSeparators.map((separator, idx) => (
@@ -465,23 +576,23 @@ const GanttView = () => {
                         style={{ left: `${separator.position}%` }}
                       />
                     ))}
-                    {aircraftRoutes
-                      .map((route) => {
-                        const position = getFlightPosition(
-                          route.departure_time,
-                          route.arrival_time
-                        );
-                        return { route, position };
-                      })
-                      .filter(({ position }) => position.visible)
-                      .map(({ route, position }) => {
-                        const { left, width } = position;
-                        return (
+                    {routesWithPositions.map(({ route, position, lane, hasConflict }) => {
+                      const { left, width } = position;
+                      // Calculate vertical position based on lane with gaps
+                      const topOffset = hasConflicts ? 4 + (lane * laneHeight) : 4;
+                      
+                      return (
                         <ContextMenu key={route.id}>
                           <ContextMenuTrigger asChild>
                             <div
-                              className="absolute h-10 top-1 cursor-pointer group z-10"
-                              style={{ left, width, minWidth: '40px' }}
+                              className="absolute cursor-pointer group z-10"
+                              style={{ 
+                                left, 
+                                width, 
+                                minWidth: '40px',
+                                top: `${topOffset}px`,
+                                height: `${flightHeight}px`
+                              }}
                               onDoubleClick={(e) => {
                                 e.stopPropagation();
                                 handleEdit(route);
@@ -492,9 +603,12 @@ const GanttView = () => {
                               }}
                             >
                               <Badge
-                                className={`${getStatusColor(route.status)} w-full h-full flex flex-col items-center justify-center p-1 text-xs`}
+                                className={`${getStatusColor(route.status)} w-full h-full flex flex-col items-center justify-center p-1 text-xs relative`}
                                 variant="outline"
                               >
+                                {hasConflict && (
+                                  <AlertTriangle className="absolute top-0 right-0 h-3 w-3 text-warning fill-warning/20 -mt-1 -mr-1" />
+                                )}
                                 <span className="font-semibold truncate w-full text-center">
                                   {route.flight_number}
                                 </span>
@@ -522,8 +636,8 @@ const GanttView = () => {
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
-                        );
-                      })}
+                      );
+                    })}
                   </div>
                 </div>
               );
