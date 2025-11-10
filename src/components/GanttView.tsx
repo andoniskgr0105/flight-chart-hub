@@ -255,6 +255,32 @@ const GanttView = () => {
   const dateLabels = generateDateLabels();
   const timeLabels = generateTimeLabels();
 
+  // Generate hour separator positions (one for each hour across all chunks)
+  const generateHourSeparators = () => {
+    const separators: { position: number; chunkIndex: number; hour: number }[] = [];
+    
+    for (let chunkIndex = 0; chunkIndex < numChunks; chunkIndex++) {
+      // Generate separators for each hour in the chunk (0 to timeView)
+      for (let hour = 0; hour <= timeView; hour++) {
+        const chunkLeftPercent = (chunkIndex / numChunks) * 100;
+        const hourPositionPercent = (hour / timeView) * (100 / numChunks);
+        const position = chunkLeftPercent + hourPositionPercent;
+        
+        // Skip the first separator of each chunk (except the very first) to avoid double lines at chunk boundaries
+        if (hour === 0 && chunkIndex > 0) continue;
+        
+        separators.push({
+          position,
+          chunkIndex,
+          hour
+        });
+      }
+    }
+    return separators;
+  };
+
+  const hourSeparators = generateHourSeparators();
+
   return (
     <>
       <div className="flex justify-between items-center mb-4">
@@ -359,9 +385,9 @@ const GanttView = () => {
         <CardContent>
           <div className="space-y-4 overflow-x-auto" id="gantt-scroll-container">
             {/* Date Header - Scrollable */}
-            <div className="flex border-b border-border/50 pb-1" style={{ width: `${numChunks * 100}%`, minWidth: '100%' }}>
+            <div className="flex border-b border-border/50 pb-1 relative" style={{ width: `${numChunks * 100}%`, minWidth: '100%' }}>
               <div className="w-48 flex-shrink-0 sticky left-0 bg-background z-20 pr-2"></div>
-              <div className="flex text-xs font-semibold text-foreground px-2" style={{ width: `calc(${numChunks * 100}% - 12rem)` }}>
+              <div className="flex text-xs font-semibold text-foreground px-2 relative" style={{ width: `calc(${numChunks * 100}% - 12rem)` }}>
                 {dateLabels.map((dateLabel) => {
                   const widthPercent = (100 / numChunks);
                   return (
@@ -376,12 +402,20 @@ const GanttView = () => {
                     </div>
                   );
                 })}
+                {/* Vertical separators for hours */}
+                {hourSeparators.map((separator, idx) => (
+                  <div
+                    key={`date-sep-${idx}`}
+                    className="absolute top-0 bottom-0 border-l border-border/30"
+                    style={{ left: `${separator.position}%` }}
+                  />
+                ))}
               </div>
             </div>
             {/* Time Header - Scrollable */}
-            <div className="flex border-b border-border pb-2" style={{ width: `${numChunks * 100}%`, minWidth: '100%' }}>
+            <div className="flex border-b border-border pb-2 relative" style={{ width: `${numChunks * 100}%`, minWidth: '100%' }}>
               <div className="w-48 font-semibold text-sm flex-shrink-0 sticky left-0 bg-background z-20 pr-2">Aircraft</div>
-              <div className="flex text-xs text-muted-foreground px-2" style={{ width: `calc(${numChunks * 100}% - 12rem)` }}>
+              <div className="flex text-xs text-muted-foreground px-2 relative" style={{ width: `calc(${numChunks * 100}% - 12rem)` }}>
                 {timeLabels.map((label, idx) => {
                   // Each chunk is 100% of viewport width, so each hour within chunk is (100 / timeView)%
                   // But we need to account for the fact that the container is numChunks * 100% wide
@@ -398,6 +432,14 @@ const GanttView = () => {
                     </div>
                   );
                 })}
+                {/* Vertical separators for hours */}
+                {hourSeparators.map((separator, idx) => (
+                  <div
+                    key={`time-sep-${idx}`}
+                    className="absolute top-0 bottom-0 border-l border-border/30"
+                    style={{ left: `${separator.position}%` }}
+                  />
+                ))}
               </div>
             </div>
 
@@ -415,6 +457,14 @@ const GanttView = () => {
                     className="relative h-12 bg-muted/30 rounded"
                     style={{ width: `calc(${numChunks * 100}% - 12rem)` }}
                   >
+                    {/* Vertical separators for hours */}
+                    {hourSeparators.map((separator, idx) => (
+                      <div
+                        key={`gantt-sep-${ac.id}-${idx}`}
+                        className="absolute top-0 bottom-0 border-l border-border/30 z-0"
+                        style={{ left: `${separator.position}%` }}
+                      />
+                    ))}
                     {aircraftRoutes
                       .map((route) => {
                         const position = getFlightPosition(
