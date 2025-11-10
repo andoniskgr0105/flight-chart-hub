@@ -45,13 +45,25 @@ const FlightRouteDialog = ({ open, onOpenChange, route, aircraft, onSuccess }: F
 
   useEffect(() => {
     if (route) {
+      // Convert UTC ISO strings to datetime-local format (showing UTC time)
+      // datetime-local expects YYYY-MM-DDTHH:mm format
+      const formatUTCForInput = (isoString: string): string => {
+        const date = new Date(isoString);
+        const year = date.getUTCFullYear();
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        const hours = String(date.getUTCHours()).padStart(2, '0');
+        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+      };
+
       setFormData({
         flight_number: route.flight_number,
         aircraft_id: route.aircraft_id,
         origin: route.origin,
         destination: route.destination,
-        departure_time: new Date(route.departure_time).toISOString().slice(0, 16),
-        arrival_time: new Date(route.arrival_time).toISOString().slice(0, 16),
+        departure_time: formatUTCForInput(route.departure_time),
+        arrival_time: formatUTCForInput(route.arrival_time),
         status: route.status,
       });
     } else {
@@ -72,10 +84,24 @@ const FlightRouteDialog = ({ open, onOpenChange, route, aircraft, onSuccess }: F
     setLoading(true);
 
     try {
+      // Parse datetime-local input and treat it as UTC
+      // datetime-local format: YYYY-MM-DDTHH:mm
+      // We need to parse this string and create a UTC date
+      const parseAsUTC = (dateTimeLocal: string): string => {
+        // Split the datetime-local string
+        const [datePart, timePart] = dateTimeLocal.split('T');
+        const [year, month, day] = datePart.split('-').map(Number);
+        const [hours, minutes] = timePart.split(':').map(Number);
+        
+        // Create a UTC date from these values
+        const utcDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
+        return utcDate.toISOString();
+      };
+
       const data = {
         ...formData,
-        departure_time: new Date(formData.departure_time).toISOString(),
-        arrival_time: new Date(formData.arrival_time).toISOString(),
+        departure_time: parseAsUTC(formData.departure_time),
+        arrival_time: parseAsUTC(formData.arrival_time),
       };
 
       if (route) {
@@ -170,7 +196,7 @@ const FlightRouteDialog = ({ open, onOpenChange, route, aircraft, onSuccess }: F
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="departure_time">Departure Time</Label>
+              <Label htmlFor="departure_time">Departure Time (UTC)</Label>
               <Input
                 id="departure_time"
                 type="datetime-local"
@@ -178,9 +204,10 @@ const FlightRouteDialog = ({ open, onOpenChange, route, aircraft, onSuccess }: F
                 onChange={(e) => setFormData({ ...formData, departure_time: e.target.value })}
                 required
               />
+              <p className="text-xs text-muted-foreground">Times are stored in UTC</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="arrival_time">Arrival Time</Label>
+              <Label htmlFor="arrival_time">Arrival Time (UTC)</Label>
               <Input
                 id="arrival_time"
                 type="datetime-local"
@@ -188,6 +215,7 @@ const FlightRouteDialog = ({ open, onOpenChange, route, aircraft, onSuccess }: F
                 onChange={(e) => setFormData({ ...formData, arrival_time: e.target.value })}
                 required
               />
+              <p className="text-xs text-muted-foreground">Times are stored in UTC</p>
             </div>
           </div>
 

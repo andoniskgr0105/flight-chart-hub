@@ -60,10 +60,10 @@ const Dashboard = () => {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background w-full">
       {/* Header */}
-      <header className="border-b border-border bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="border-b border-border bg-card w-full">
+        <div className="w-full px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
               <Plane className="h-6 w-6 text-primary" />
@@ -81,7 +81,7 @@ const Dashboard = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
+      <main className="w-full px-4 py-6">
         <Tabs defaultValue="gantt" className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
             <TabsTrigger value="gantt" className="gap-2">
@@ -94,11 +94,11 @@ const Dashboard = () => {
             </TabsTrigger>
           </TabsList>
           
-          <TabsContent value="gantt" className="space-y-4">
+          <TabsContent value="gantt" className="space-y-4 w-full">
             <GanttView />
           </TabsContent>
           
-          <TabsContent value="aircraft" className="space-y-4">
+          <TabsContent value="aircraft" className="space-y-4 w-full">
             <AircraftList />
           </TabsContent>
         </Tabs>
